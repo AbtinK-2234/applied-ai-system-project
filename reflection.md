@@ -55,10 +55,14 @@ The conflict detection algorithm only checks whether two consecutive timed tasks
 - What behaviors did you test?
 - Why were these tests important?
 
+I tested 26 behaviors across 7 test groups: task completion toggling, task addition/removal on pets, required-first scheduling with time-budget enforcement, chronological sorting by start_time, filtering by pet name and completion status, daily and weekly recurrence logic (including attribute preservation on the next occurrence), conflict detection for overlapping and same-start-time tasks, and a full set of edge cases — pet with no tasks, owner with no pets, zero available time, task that exactly fills the budget, already-completed tasks excluded from the plan, safe removal of nonexistent tasks, un-timed tasks sorted to the end, and multi-pet task interleaving. These tests were important because they verify both the "happy path" (normal usage) and the boundary conditions where bugs are most likely to hide.
+
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
 - What edge cases would you test next if you had more time?
+
+I am fairly confident (4 out of 5) in the scheduler's correctness. The 26-test suite covers all core behaviors, recurrence logic, and conflict detection, and every test passes consistently. If I had more time, I would add tests for invalid inputs (e.g. malformed start_time strings like "25:99"), extremely large task counts to check performance, and edge cases around weekly recurrence spanning month or year boundaries.
 
 ---
 

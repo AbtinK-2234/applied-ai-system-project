@@ -50,3 +50,25 @@ Beyond basic priority-based planning, PawPal+ includes several algorithmic enhan
 - **Filtering** — The scheduler can filter tasks by pet name or by completion status, making it easy to view only what's relevant.
 - **Recurring tasks** — Tasks can be set to `"daily"` or `"weekly"` frequency. When a recurring task is marked complete, a new instance is automatically created with the next due date (using `timedelta`).
 - **Conflict detection** — Before building the schedule, the scheduler scans for overlapping time slots and surfaces warning messages rather than crashing, so the owner can adjust.
+
+## Testing PawPal+
+
+Run the full test suite with:
+
+```bash
+python -m pytest
+```
+
+The suite contains **26 tests** organized into 7 groups:
+
+| Group | What it covers |
+|---|---|
+| `TestTaskCompletion` | `mark_complete()` changes status correctly |
+| `TestTaskAddition` | Adding/removing tasks, pet name stamping |
+| `TestScheduler` | Required-first scheduling, time-budget overflow |
+| `TestSortingAndFiltering` | Chronological sort, filter by pet, filter by status |
+| `TestRecurringTasks` | Daily/weekly recurrence, one-time tasks return None |
+| `TestConflictDetection` | Overlapping times flagged, non-overlapping times clean |
+| `TestEdgeCases` | No tasks, no pets, zero time, exact-fit, same start time, completed exclusion, safe removal, un-timed tasks sorted last, attribute preservation, multi-pet interleaving |
+
+**Confidence level: 4/5** — Core scheduling, sorting, recurrence, and conflict logic are well-covered. Edge cases like invalid time formats or extremely large task sets are not yet tested.
