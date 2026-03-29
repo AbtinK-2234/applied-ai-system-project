@@ -14,6 +14,8 @@ My initial UML design includes 4 main classes: Owner, Pet, Task, and Scheduler. 
 - Did your design change during implementation?
 - If yes, describe at least one change and why you made it.
 
+Yes, the design changed after reviewing the skeleton. First, I added a `pet_name` field to the Task class because once all tasks are collected into a flat list for scheduling, there was no way to tell which pet a task belonged to — this is needed for displaying the plan clearly (e.g. "Walk — for Mochi"). Second, I added a `required` boolean to Task to distinguish mandatory tasks like medication from optional ones like enrichment, since priority alone does not capture whether a task can be skipped. Third, I added a `priority_value` property and a `PRIORITY_MAP` constant so the scheduler can sort tasks numerically instead of repeatedly converting priority strings. Finally, I added `skipped_tasks` and `reasoning` lists to the Scheduler class so it can track which tasks were dropped due to time constraints and log its decisions, which `explain_plan()` can then use directly instead of re-deriving the logic.
+
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
