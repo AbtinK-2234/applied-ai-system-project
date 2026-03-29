@@ -25,6 +25,8 @@ Yes, the design changed after reviewing the skeleton. First, I added a `pet_name
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
 - How did you decide which constraints mattered most?
 
+The scheduler considers three main constraints: the owner's total available time (the hard budget), task priority (high/medium/low mapped to numeric values for sorting), and whether a task is marked as required (mandatory tasks like medication that cannot be skipped). It also considers start_time to detect conflicts and to sort the final plan chronologically. I decided that required tasks should always come first because missing medication or feeding has real consequences for the pet, whereas skipping a grooming session is just inconvenient. Time budget is the hard ceiling — once it's exhausted, remaining tasks are skipped regardless of priority.
+
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
@@ -41,10 +43,14 @@ The conflict detection algorithm only checks whether two consecutive timed tasks
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
 - What kinds of prompts or questions were most helpful?
 
+I used AI (Claude Code) throughout every phase of the project: brainstorming class attributes during initial UML design, reviewing the skeleton for missing relationships and bottlenecks, implementing the full scheduling logic, writing the test suite, and polishing the Streamlit UI. The most effective prompts were ones that asked the AI to review existing code and identify problems — for example, "review the skeleton and find missing relationships or logic bottlenecks" surfaced four concrete issues (no pet_name on Task, no required flag, string-based priority sorting, no reasoning log) that significantly improved the design. Using separate chat sessions for different phases (design, implementation, testing, UI) helped keep each conversation focused and prevented context from earlier phases from biasing later decisions.
+
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
 - How did you evaluate or verify what the AI suggested?
+
+When the AI initially suggested the skeleton with 4 classes, it included a `Constraints` class as a separate entity. I chose to reject that and instead fold constraints (required flag, time budget, priority) into the existing Task and Scheduler classes, because a separate Constraints class would have added indirection without clear benefit — the scheduler already needs to know about priorities and time, so those belong where the decisions are made. I evaluated this by thinking through what the Constraints class would actually hold versus what the Scheduler already handles, and concluded it would just be a pass-through with no logic of its own.
 
 ---
 
@@ -72,10 +78,16 @@ I am fairly confident (4 out of 5) in the scheduler's correctness. The 26-test s
 
 - What part of this project are you most satisfied with?
 
+I am most satisfied with the iterative design process — starting with a simple 4-class skeleton, then systematically reviewing it for gaps (pet_name, required, reasoning log), adding algorithmic features (sorting, filtering, recurrence, conflict detection), and verifying each addition with targeted tests. The final scheduler is more capable than what I initially planned, but every addition was driven by a concrete need rather than speculation.
+
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
 
+I would redesign the conflict detection to handle full duration overlaps rather than only checking consecutive tasks. I would also add input validation (e.g. rejecting malformed start_time strings), a way to edit or reorder tasks in the UI, and persistent storage so the owner's data survives across browser sessions.
+
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+
+The most important lesson was that AI is most useful when you treat it as a reviewer and collaborator rather than a code generator. The highest-value moments were when I asked the AI to critique my existing design and identify what was missing — that produced better results than asking it to generate code from scratch, because the review was grounded in concrete code rather than abstract requirements. Being the "lead architect" means making the final call on what to keep, what to reject, and why — the AI proposes, but the human decides.

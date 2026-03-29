@@ -1,15 +1,18 @@
+from datetime import date
+
 import streamlit as st
 from pawpal_system import Owner, Pet, Task, Scheduler
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
 st.title("🐾 PawPal+")
+st.caption("A smart pet care scheduling assistant")
 
 # --- Session State: persist the Owner across reruns ---
 if "owner" not in st.session_state:
     st.session_state.owner = None
 
-# --- Step 1: Owner Setup ---
+# --- Owner Setup ---
 if st.session_state.owner is None:
     st.subheader("Welcome! Let's set up your profile.")
     with st.form("owner_form"):
@@ -27,9 +30,17 @@ if st.session_state.owner is None:
 else:
     owner = st.session_state.owner
 
-    st.markdown(f"**Owner:** {owner.name} · **Time budget:** {owner.available_time} min")
+    # --- Header bar ---
+    col_info, col_reset = st.columns([4, 1])
+    with col_info:
+        st.markdown(f"**Owner:** {owner.name} · **Time budget:** {owner.available_time} min")
+    with col_reset:
+        if st.button("Start Over"):
+            st.session_state.owner = None
+            st.session_state.pop("scheduler", None)
+            st.rerun()
 
-    # --- Step 2: Add a Pet ---
+    # ── Add a Pet ─────────────────────────────────────────────────
     st.subheader("🐶 Pets")
 
     with st.form("pet_form"):
@@ -48,22 +59,26 @@ else:
     if not owner.pets:
         st.info("No pets yet. Add one above.")
     else:
-        for pet in owner.pets:
-            st.markdown(f"- **{pet.name}** ({pet.species}, age {pet.age}) — {len(pet.tasks)} tasks")
+        pet_data = [
+            {"Name": p.name, "Species": p.species, "Age": p.age, "Tasks": len(p.tasks)}
+            for p in owner.pets
+        ]
+        st.table(pet_data)
 
-    # --- Step 3: Add Tasks to a Pet ---
+    # ── Add Tasks ─────────────────────────────────────────────────
     if owner.pets:
         st.subheader("📋 Tasks")
 
         with st.form("task_form"):
-            target_pet = st.selectbox(
-                "Add task for", [p.name for p in owner.pets]
-            )
+            target_pet = st.selectbox("Add task for", [p.name for p in owner.pets])
             col1, col2 = st.columns(2)
             with col1:
                 task_title = st.text_input("Task title", value="Morning walk")
                 duration = st.number_input(
                     "Duration (minutes)", min_value=1, max_value=240, value=20
+                )
+                start_time = st.text_input(
+                    "Start time (HH:MM, optional)", value="", placeholder="e.g. 08:30"
                 )
             with col2:
                 priority = st.selectbox("Priority", ["high", "medium", "low"])
@@ -71,6 +86,7 @@ else:
                     "Category",
                     ["walk", "feeding", "medication", "grooming", "enrichment"],
                 )
+                frequency = st.selectbox("Frequency", ["once", "daily", "weekly"])
             required = st.checkbox("Required (cannot be skipped)")
             add_task = st.form_submit_button("Add Task")
             if add_task and task_title:
@@ -81,23 +97,65 @@ else:
                     priority=priority,
                     category=category,
                     required=required,
+                    start_time=start_time.strip(),
+                    frequency=frequency,
+                    due_date=date.today() if frequency != "once" else None,
                 ))
                 st.rerun()
 
-        # Show current tasks per pet
+        # ── Task table (sorted by time) ───────────────────────────
         all_tasks = owner.get_all_tasks()
         if all_tasks:
-            st.markdown("**Current tasks:**")
-            for task in all_tasks:
-                tag = "🔴 REQUIRED" if task.required else task.priority
-                st.markdown(
-                    f"- {task.title} ({task.pet_name}) — "
-                    f"{task.duration_minutes} min · [{tag}]"
-                )
+            scheduler_preview = Scheduler(owner)
+            sorted_tasks = scheduler_preview.sort_by_time(all_tasks)
+            task_rows = []
+            for t in sorted_tasks:
+                tag = "REQUIRED" if t.required else t.priority
+                status = "Done" if t.completed else "Pending"
+                task_rows.append({
+                    "Time": t.start_time or "—",
+                    "Task": t.title,
+                    "Pet": t.pet_name,
+                    "Duration": f"{t.duration_minutes} min",
+                    "Priority": tag,
+                    "Frequency": t.frequency,
+                    "Status": status,
+                })
+            st.table(task_rows)
         else:
             st.info("No tasks yet. Add one above.")
 
-    # --- Step 4: Generate Schedule ---
+        # ── Filter view ───────────────────────────────────────────
+        with st.expander("Filter tasks"):
+            filter_col1, filter_col2 = st.columns(2)
+            with filter_col1:
+                filter_pet = st.selectbox(
+                    "By pet", ["All"] + [p.name for p in owner.pets], key="filter_pet"
+                )
+            with filter_col2:
+                filter_status = st.selectbox(
+                    "By status", ["All", "Pending", "Completed"], key="filter_status"
+                )
+
+            filtered = all_tasks
+            if filter_pet != "All":
+                filtered = [t for t in filtered if t.pet_name == filter_pet]
+            if filter_status == "Pending":
+                filtered = [t for t in filtered if not t.completed]
+            elif filter_status == "Completed":
+                filtered = [t for t in filtered if t.completed]
+
+            if filtered:
+                for t in filtered:
+                    tag = "REQUIRED" if t.required else t.priority
+                    st.markdown(
+                        f"- **{t.title}** ({t.pet_name}) — "
+                        f"{t.duration_minutes} min · {tag}"
+                    )
+            else:
+                st.info("No tasks match the selected filters.")
+
+    # ── Generate Schedule ─────────────────────────────────────────
     st.divider()
     st.subheader("📅 Daily Schedule")
 
@@ -107,14 +165,58 @@ else:
         else:
             scheduler = Scheduler(owner)
             scheduler.generate_schedule()
-            st.session_state.last_plan = scheduler.explain_plan()
+            st.session_state.scheduler = scheduler
 
-    if "last_plan" in st.session_state:
-        st.code(st.session_state.last_plan, language=None)
+    if "scheduler" in st.session_state:
+        scheduler = st.session_state.scheduler
 
-    # --- Reset ---
-    st.divider()
-    if st.button("Start Over"):
-        st.session_state.owner = None
-        st.session_state.pop("last_plan", None)
-        st.rerun()
+        # Conflict warnings
+        if scheduler.conflicts:
+            for conflict in scheduler.conflicts:
+                st.warning(conflict)
+
+        # Schedule table
+        if scheduler.daily_plan:
+            plan_rows = []
+            for i, task in enumerate(scheduler.daily_plan, start=1):
+                tag = "REQUIRED" if task.required else task.priority
+                freq = task.frequency if task.frequency != "once" else ""
+                plan_rows.append({
+                    "#": i,
+                    "Time": task.start_time or "—",
+                    "Task": task.title,
+                    "Pet": task.pet_name,
+                    "Duration": f"{task.duration_minutes} min",
+                    "Type": tag,
+                    "Repeat": freq,
+                })
+            st.table(plan_rows)
+
+            # Summary metrics
+            total = sum(t.duration_minutes for t in scheduler.daily_plan)
+            free = owner.available_time - total
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Scheduled", f"{len(scheduler.daily_plan)} tasks")
+            m2.metric("Time used", f"{total} min")
+            m3.metric("Time free", f"{free} min")
+
+            if free == 0:
+                st.info("Your day is fully booked!")
+            elif free > 0:
+                st.success(f"You have {free} minutes of free time remaining.")
+        else:
+            st.info("No tasks could be scheduled.")
+
+        # Skipped tasks
+        if scheduler.skipped_tasks:
+            with st.expander(f"Skipped tasks ({len(scheduler.skipped_tasks)})"):
+                for t in scheduler.skipped_tasks:
+                    st.markdown(
+                        f"- **{t.title}** ({t.pet_name}) — "
+                        f"{t.duration_minutes} min — not enough time"
+                    )
+
+        # Reasoning
+        with st.expander("Scheduling reasoning"):
+            for reason in scheduler.reasoning:
+                st.markdown(f"- {reason}")
