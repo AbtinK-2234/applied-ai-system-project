@@ -21,7 +21,7 @@ To run the app locally:
 streamlit run app.py
 ```
 
-<a href="/course_images/ai110/demo_screenshot.png" target="_blank"><img src='/course_images/ai110/demo_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+![PawPal App](demo_screenshot.png)
 
 ## System Architecture
 
