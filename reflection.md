@@ -30,6 +30,8 @@ Yes, the design changed after reviewing the skeleton. First, I added a `pet_name
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
 
+The conflict detection algorithm only checks whether two consecutive timed tasks overlap (i.e. whether one task's end time exceeds the next task's start time). It does not check every possible pair of tasks against each other, and it cannot detect partial overlaps between non-adjacent tasks. This is a reasonable tradeoff because, in a typical pet care day, the number of tasks is small (under 20) and most conflicts occur between back-to-back activities. A full pairwise check would add complexity without meaningful benefit at this scale. The lightweight approach keeps the code simple and the output easy to read, while still catching the most common scheduling mistake — double-booking the same time slot.
+
 ---
 
 ## 3. AI Collaboration
