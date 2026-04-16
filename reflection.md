@@ -93,3 +93,41 @@ I would redesign the conflict detection to handle full duration overlaps rather 
 - What is one important thing you learned about designing systems or working with AI on this project?
 
 The most important lesson was that AI is most useful when you treat it as a reviewer and collaborator rather than a code generator. The highest-value moments were when I asked the AI to critique my existing design and identify what was missing — that produced better results than asking it to generate code from scratch, because the review was grounded in concrete code rather than abstract requirements. Being the "lead architect" means making the final call on what to keep, what to reject, and why — the AI proposes, but the human decides.
+
+---
+
+## 6. AI Feature Extension: RAG-Powered Pet Care Advisor
+
+### a. What was added
+
+I extended PawPal+ with a Retrieval-Augmented Generation (RAG) pipeline that powers an AI Pet Care Advisor chat interface. The system:
+
+1. Loads a knowledge base of 6 pet care documents (nutrition, health, grooming, exercise, medication, training) and chunks them into ~100 indexed segments.
+2. When the user asks a question, the RAG engine retrieves the top-k most relevant chunks using TF-IDF vectorization and cosine similarity (via scikit-learn).
+3. The AI Advisor combines the retrieved knowledge with live app context — the owner's pet profiles, task list, and generated schedule — into a single prompt.
+4. The combined prompt is sent to the HuggingFace Inference API (Llama 3.1 8B), which generates a personalized, grounded answer.
+5. Guardrails validate input (length, topic relevance) and output (response length, dosage safety disclaimers) before and after the API call.
+
+The feature is fully integrated into the Streamlit app as a second tab alongside the existing schedule interface. It reads and uses live app state — if you add a 10-year-old cat and ask about senior cat health, the advisor references your specific pet.
+
+### b. How AI was used during RAG development
+
+I used Claude Code (Agent Mode) to help design the RAG architecture, particularly the chunking strategy and how to combine retrieval context with live app state. The most helpful prompt was asking the AI to outline the full pipeline from question to answer, which helped me see the data flow clearly before writing code.
+
+**One helpful AI suggestion:** When I was building the knowledge base, the AI suggested organizing documents by topic (nutrition, health, grooming, etc.) rather than by pet type (dog guide, cat guide). This was the right call — it means a question about "dog grooming" retrieves the grooming document and gets both dog-specific and general grooming advice, rather than getting everything about dogs regardless of relevance.
+
+**One flawed AI suggestion:** The AI initially suggested using a vector database (ChromaDB) with sentence-transformer embeddings for retrieval. While this would give better semantic matching, it adds heavy dependencies (torch, transformers) that make the project harder to install and run reproducibly. I chose TF-IDF instead — it is lighter, has no GPU requirements, installs in seconds, and is accurate enough for keyword-rich pet care queries. The tradeoff is that purely semantic queries (e.g., "my pet seems sad") may not retrieve as well as keyword-heavy ones, but for the practical scope of this project, TF-IDF is the right choice.
+
+### c. System limitations and future improvements
+
+**Current limitations:**
+- TF-IDF retrieval is keyword-dependent — it works well for specific queries ("dog nutrition feeding") but less well for vague or purely semantic queries ("my pet is acting weird").
+- The knowledge base is static. New pet care information requires manually adding markdown files.
+- The advisor does not maintain conversation history across questions (each question is independent).
+- Topic relevance filtering uses keyword matching, which could miss edge cases or block creative but valid questions.
+
+**Future improvements:**
+- Upgrade to embedding-based retrieval (e.g., sentence-transformers) for better semantic understanding when the project scope grows.
+- Add conversation memory so follow-up questions retain context ("What about for cats?" after asking a dog nutrition question).
+- Allow users to upload their own vet documents or care instructions into the knowledge base.
+- Add a confidence score to each response based on retrieval quality, so users know when the AI is less certain.
