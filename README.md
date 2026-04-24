@@ -35,12 +35,18 @@ The advisor materially changes system behavior: questions about a 10-year-old ca
 
 ## System Architecture
 
-![PawPal+ Architecture](assets/uml_final.png)
+### Class diagram
 
-The diagram (and the matching mermaid source in [assets/uml_final.md](assets/uml_final.md)) shows the two halves of the system:
+![PawPal+ Class Diagram](assets/uml_final.png)
 
-- **Core scheduler** (left) — `Owner` owns one or more `Pet`s, each `Pet` has `Task`s, and `Scheduler` reads the `Owner` to produce `daily_plan`, `skipped_tasks`, `conflicts`, and `reasoning`.
-- **RAG pipeline** (right) — the user question flows through input guardrails, into `RAGEngine` (which has already loaded and TF-IDF-indexed the `knowledge_base/`), through `AIAdvisor` (which adds live pet + schedule context), out to the HuggingFace API, and back through output guardrails before the Streamlit UI renders it.
+### Runtime data flow (agentic pipeline)
+
+![PawPal+ Runtime Flow](assets/uml_flow.png)
+
+Mermaid source for both diagrams is in [assets/uml_final.md](assets/uml_final.md). The diagrams show the two halves of the system:
+
+- **Core scheduler** — `Owner` owns one or more `Pet`s, each `Pet` has `Task`s, and `Scheduler` reads the `Owner` to produce `daily_plan`, `skipped_tasks`, `conflicts`, and `reasoning`.
+- **AI layer** — a user question passes through input guardrails, into the `PetCareAgent` which runs a **planner → tool executor → synthesizer → critic → (optional revise)** chain. Tools read from `RAGEngine` (TF-IDF-indexed `knowledge_base/`), from `Owner` (pet profiles), and from `Scheduler` (live schedule + conflicts). The synthesizer uses the specialized few-shot system prompt. The critic is a heuristic groundedness check. The final answer passes through output guardrails (length cap, dosage disclaimer) before the Streamlit UI renders it alongside the observable trace.
 
 ### Components
 
@@ -70,10 +76,11 @@ pip install -r requirements.txt
 
 ### 2. Provide a HuggingFace Inference API token
 
-The AI Advisor tab needs a free [HuggingFace token](https://huggingface.co/settings/tokens). Put it in a `.env` file in the project root:
+The AI Advisor tab needs a free [HuggingFace token](https://huggingface.co/settings/tokens). Copy the provided template and paste your token in:
 
-```
-HF_TOKEN=hf_your_token_here
+```bash
+cp .env.example .env
+# Then open .env and replace "your-huggingface-token-here" with your actual token
 ```
 
 > The scheduling tab works without the token — only the AI Advisor tab requires it.
@@ -346,10 +353,12 @@ applied-ai-system-project/
 ├── main.py                 # CLI demo (no UI)
 ├── knowledge_base/         # Six topic-organized markdown documents
 ├── tests/                  # 48 pytest tests
-├── assets/                 # System diagram (UML), demo screenshot, mermaid source
-│   ├── uml_final.png
-│   ├── uml_final.md
+├── assets/                 # Architecture diagrams, demo screenshot, mermaid source
+│   ├── uml_final.png       # Class diagram
+│   ├── uml_flow.png        # Runtime data-flow diagram
+│   ├── uml_final.md        # Mermaid source for both diagrams
 │   └── demo_screenshot.png
+├── .env.example            # Template for the HuggingFace token
 ├── model_card.md           # AI collaboration, biases, testing reflection (Module 4)
 ├── reflection.md           # Modules 1–3 design reflection
 ├── requirements.txt

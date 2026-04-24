@@ -28,3 +28,6 @@ jobs:
 
       - name: Run RAG evaluation
         run: python eval_rag.py
+
+      - name: Run specialization evaluation (offline)
+        run: python eval_specialization.py
