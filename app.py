@@ -322,6 +322,33 @@ else:
             for msg in st.session_state.chat_history:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
+                    trace = msg.get("trace")
+                    if trace:
+                        label = (
+                            f"Agent trace — {len(trace)} steps, "
+                            f"tools: {msg.get('tools_called', [])}"
+                            + (" (revised)" if msg.get("revised") else "")
+                        )
+                        with st.expander(label):
+                            for step in trace:
+                                detail_block = (
+                                    f"\n```\n{step['detail']}\n```"
+                                    if step.get("detail") else ""
+                                )
+                                st.markdown(
+                                    f"**{step['name']}** — {step['summary']}"
+                                    + detail_block
+                                )
+
+            # Mode toggle
+            agent_mode = st.toggle(
+                "Agentic mode (multi-step reasoning with observable trace)",
+                value=True,
+                help=(
+                    "When on, the advisor uses a planner → tools → synthesizer → "
+                    "critic chain and shows every intermediate step."
+                ),
+            )
 
             # Chat input
             if question := st.chat_input("Ask about pet care..."):
@@ -334,10 +361,34 @@ else:
 
                 # Generate AI response
                 with st.chat_message("assistant"):
-                    with st.spinner("Searching knowledge base & generating advice..."):
-                        logger.info("User question: %s", question[:100])
-                        answer = advisor.ask(question, owner)
-                    st.markdown(answer)
-                st.session_state.chat_history.append(
-                    {"role": "assistant", "content": answer}
-                )
+                    if agent_mode:
+                        with st.spinner("Planning → calling tools → synthesizing → critiquing..."):
+                            logger.info("Agentic question: %s", question[:100])
+                            result = advisor.ask_with_agent(question, owner)
+                        st.markdown(result.answer)
+                        if result.trace:
+                            label = (
+                                f"Agent trace — {len(result.trace)} steps, "
+                                f"tools: {result.tools_called}"
+                                + (" (revised)" if result.revised else "")
+                            )
+                            with st.expander(label):
+                                for step in result.trace:
+                                    st.markdown(step.render())
+                        history_entry = {
+                            "role": "assistant",
+                            "content": result.answer,
+                            "trace": [
+                                {"name": s.name, "summary": s.summary, "detail": s.detail}
+                                for s in result.trace
+                            ],
+                            "tools_called": result.tools_called,
+                            "revised": result.revised,
+                        }
+                    else:
+                        with st.spinner("Searching knowledge base & generating advice..."):
+                            logger.info("Simple question: %s", question[:100])
+                            answer = advisor.ask(question, owner)
+                        st.markdown(answer)
+                        history_entry = {"role": "assistant", "content": answer}
+                st.session_state.chat_history.append(history_entry)

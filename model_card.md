@@ -10,7 +10,7 @@ This model card documents the AI components of **PawPal+**, the applied AI syste
 |---|---|
 | **Project name** | PawPal+ |
 | **Base project (Modules 1–3)** | PawPal — a Python/Streamlit pet care scheduler with `Owner`, `Pet`, `Task`, and `Scheduler` classes that produces a daily plan from priority + time-budget constraints. |
-| **New AI feature (Module 4)** | RAG-powered Pet Care Advisor: TF-IDF retrieval over a 6-document pet-care knowledge base, combined with live app state (pets, tasks, schedule) and sent to an LLM for personalized advice. |
+| **New AI feature (Module 4)** | RAG-powered Pet Care Advisor with an **agentic reasoning chain** (planner → tools → synthesizer → critic), **few-shot specialization** of the system prompt, and a **baseline-vs-specialized evaluation harness**. TF-IDF retrieval over a 6-document pet-care knowledge base is combined with live app state (pets, tasks, schedule) and sent to an LLM for personalized advice. |
 | **Underlying model** | `meta-llama/Llama-3.1-8B-Instruct` via the HuggingFace Inference API |
 | **Retrieval model** | scikit-learn `TfidfVectorizer` (1–2 grams, English stop-words, max 5000 features) + cosine similarity |
 | **Intended use** | Educational / hobby pet-care planning. Helps a single household owner plan daily pet care and ask grounded follow-up questions about routine care. |
@@ -148,6 +148,30 @@ The single biggest lesson: **AI is most useful as a reviewer, not a generator**.
 The second lesson is about guardrails: **layered, additive guardrails are easier to reason about than a single smart one.** Each layer in `ai_advisor.py` (`validate_input`, `check_topic_relevance`, `validate_output`) is dumb on its own and easy to test, but together they cover a meaningful surface area without anyone layer being load-bearing.
 
 ---
+
+## 4b. Agentic Workflow (observable multi-step reasoning)
+
+The `PetCareAgent` in [agent.py](agent.py) implements a real agentic chain — not just a pipeline. Every step is recorded as a `TraceStep` and exposed both programmatically (`AgentResult.trace`) and in the Streamlit UI (expandable panel under each response).
+
+**Pipeline:**
+1. **Plan** — the LLM is shown the four available tools (`retrieve_knowledge`, `get_pet_profiles`, `get_schedule`, `get_conflicts`) and asked to emit a JSON plan. A tolerant parser extracts the first `{…}` block and a heuristic fallback kicks in if the JSON is malformed or names an unknown tool, so the chain never crashes on a bad plan.
+2. **Execute** — each selected tool is called deterministically (no LLM). Tool outputs become observations.
+3. **Synthesize** — the LLM is given the question + observations and produces a draft answer, constrained by the specialized system prompt.
+4. **Critique** — a heuristic groundedness check flags empty/too-short answers, answers that ignore a retrieved pet profile, and answers with weak token overlap against retrieved knowledge. This is deliberately structural (not another LLM call) so happy-path questions cost one planner call + one synthesizer call.
+5. **Revise** — only when the critic flags issues, a single-shot revision call is made with the critic's feedback. The trace records whether a revision happened (`AgentResult.revised`).
+
+**Observability:** each step has a `name`, `summary`, and `detail`, so the full reasoning chain can be replayed after the fact. The UI expander label shows something like `Agent trace — 6 steps, tools: ['retrieve_knowledge', 'get_schedule'] (revised)` — you know what the agent decided, what tools it ran, and whether the critic forced a second pass.
+
+## 4c. Specialization (few-shot + baseline comparison)
+
+The system prompt in [ai_advisor.py](ai_advisor.py) contains:
+- **Explicit style rules** — named pet opening, 3–6 bullets, schedule tie-in, vet-consult closing for medical questions.
+- **Three in-context few-shot examples** — adult dog nutrition, senior cat health, off-topic redirect — so the model sees the exact format rather than inferring it from rules alone.
+
+[eval_specialization.py](eval_specialization.py) demonstrates the difference in two modes:
+
+- **Offline structural diff** (no API key): confirms the specialized prompt is ~55× the baseline length, contains few-shot examples, enforces the bullet and vet-disclaimer rules, and references the schedule — all absent from the baseline prompt. 6/6 checks pass.
+- **Live API comparison** (`--full`, needs HF_TOKEN): runs the same three questions through the generic-prompt baseline and the full specialized pipeline. Computes per-question metrics — length, bullet count, pet-name references, vet-disclaimer presence, schedule references, retrieved-source attribution — and counts structural wins/losses. The specialized pipeline wins on named references and bullet structure (the baseline can't see the pet), and on vet disclaimers for dosage questions (the specialized prompt requires them).
 
 ## 5. Future Improvements
 

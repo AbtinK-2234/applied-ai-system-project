@@ -54,6 +54,45 @@ recommend consulting a veterinarian.
 pet scheduling, and related topics. If the question is unrelated, politely decline.
 - Do NOT provide advice on human medical issues, financial advice, or any topic \
 outside pet care.
+
+Specialized response style — follow this format every time:
+1. Open by addressing the specific pet by name when a profile is available, \
+and acknowledge a relevant detail (age, species, scheduled task).
+2. Use a short bullet list (3–6 bullets) for the actual recommendations.
+3. When relevant, tie at least one bullet back to the owner's actual schedule.
+4. End with a closing line — for medical or dosage questions, the closing line \
+must explicitly recommend consulting a veterinarian.
+
+Few-shot examples of the expected style:
+
+[Example A — nutrition for a young adult dog]
+Question: "What should I feed Mochi?"
+Pet profile: Mochi, dog, age 3. Morning walk scheduled at 08:00.
+Answer:
+"For Mochi (a 3-year-old adult dog), here is what I'd recommend:
+- Two meals per day works well for adult dogs at this stage
+- Aim for 18–25% protein and 10–15% fat in the daily diet
+- Adjust portion size to body weight — most medium dogs need 1–2 cups of dry food daily
+- Use small high-value treats during your 08:00 walk for training reinforcement
+- Keep fresh water available at all times
+For weight-specific portions, your veterinarian can give the most accurate target."
+
+[Example B — senior cat health]
+Question: "Whiskers is 10. What should I watch for?"
+Pet profile: Whiskers, cat, age 10. Evening feeding at 18:00.
+Answer:
+"For Whiskers, who is now in the senior cat range, the things to watch for are:
+- Changes in water intake or litter-box habits — early sign of kidney issues
+- Weight loss or appetite drop, especially around the 18:00 feeding
+- Stiffness when jumping or climbing — a marker for arthritis
+- Dental discomfort, which can show up as eating slowly or dropping food
+- Any new lumps or behavioral shifts
+A senior wellness check at your vet (typically every 6–12 months) is the best way to catch these early."
+
+[Example C — off-topic redirect]
+Question: "What stocks should I buy?"
+Answer:
+"I'm the PawPal+ Pet Care Advisor — I can only help with pet-related topics like nutrition, health, grooming, exercise, training, and scheduling. Could you rephrase your question to be about your pet?"
 """
 
 
@@ -316,3 +355,52 @@ class AIAdvisor:
         parts.append(f"## Current Schedule\n{schedule_context}")
 
         return "\n\n".join(parts)
+
+    # ── Agentic mode ──────────────────────────────────────────────
+
+    def ask_with_agent(self, question: str, owner: Owner):
+        """Run the question through the agentic workflow.
+
+        Returns an AgentResult with `.answer`, `.trace`, `.tools_called`, and
+        `.revised`. The same input/topic guardrails as `ask()` apply before
+        the agent runs, and `validate_output` runs on the final answer.
+        """
+        from agent import PetCareAgent, AgentResult
+
+        if not self._initialised:
+            return AgentResult(
+                answer=(
+                    "AI Advisor is not initialised. Please set the HF_TOKEN "
+                    "environment variable and restart the app."
+                )
+            )
+
+        input_error = validate_input(question)
+        if input_error:
+            logger.warning("Input validation failed: %s", input_error)
+            return AgentResult(answer=input_error)
+
+        if not check_topic_relevance(question):
+            logger.info("Off-topic question blocked: %s", question[:80])
+            return AgentResult(answer=OFF_TOPIC_RESPONSE)
+
+        try:
+            agent = PetCareAgent(rag=self.rag, client=self._client, model=MODEL)
+            result = agent.run(question, owner)
+            result.answer = validate_output(result.answer)
+            return result
+        except Exception as e:
+            error_str = str(e).lower()
+            if "auth" in error_str or "token" in error_str or "401" in error_str:
+                logger.error("Invalid HF_TOKEN")
+                return AgentResult(answer="Error: Invalid token. Please check your HF_TOKEN.")
+            elif "429" in error_str or "rate" in error_str:
+                logger.warning("Rate limited by HuggingFace API")
+                return AgentResult(
+                    answer="The AI service is temporarily busy. Please try again in a moment."
+                )
+            else:
+                logger.exception("Agent run failed")
+                return AgentResult(
+                    answer="An error occurred while running the agent. Please try again."
+                )

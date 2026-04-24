@@ -10,15 +10,28 @@ The original PawPal was a Python/Streamlit app organized around four classes (`O
 
 ## What's New in PawPal+ (Module 4)
 
-The Module 4 extension is a **RAG-powered AI Pet Care Advisor** that lives as a second tab inside the existing Streamlit app. It is fully integrated, not a side script:
+The Module 4 extension is a **RAG-powered AI Pet Care Advisor with an agentic reasoning chain** that lives as a second tab inside the existing Streamlit app. It is fully integrated, not a side script. The four AI features from the rubric are all present and observable:
 
-- A **knowledge base** of six markdown documents (nutrition, health, grooming, exercise, medication, training) is chunked and indexed with TF-IDF.
-- When the user asks a question, the **RAG engine** retrieves the top-k most relevant chunks via cosine similarity.
-- The **AI Advisor** combines the retrieved knowledge with the user's **live `Owner` state** — pet profiles, current task list, and freshly-generated schedule — and sends the combined prompt to the HuggingFace Inference API (Llama-3.1-8B-Instruct).
+### 1. Retrieval-Augmented Generation
+- A **knowledge base** of six topic-organized markdown documents (nutrition, health, grooming, exercise, medication, training) is chunked and indexed with TF-IDF.
+- The **RAG engine** retrieves the top-k most relevant chunks via cosine similarity.
+
+### 2. Agentic Workflow (observable multi-step reasoning)
+- The `PetCareAgent` runs a **planner → tools → synthesizer → critic → (optional revise)** chain, with each step recorded in a trace that's rendered live in the Streamlit UI.
+- The **planner** calls the LLM to pick which tools to run (as JSON), with a heuristic fallback when the LLM output is malformed.
+- **Four tools** are available: `retrieve_knowledge`, `get_pet_profiles`, `get_schedule`, `get_conflicts`. The agent may call 1–4 of them per question.
+- The **critic** is a heuristic groundedness check — empty/short answers, pet-name omission when a pet profile was retrieved, or weak overlap with retrieved knowledge all trigger a revision pass.
+- The trace is **observable in the UI** (expandable panel under each response) and returned as data to callers of `ask_with_agent()`.
+
+### 3. Specialized behavior (constrained style + few-shot prompting)
+- The system prompt includes **three in-context few-shot examples** demonstrating the required PawPal+ response format — named opening, bulleted recommendations, schedule tie-in, vet-consult closing for medical questions.
+- A dedicated evaluation script (`eval_specialization.py`) compares the specialized pipeline against a generic baseline on the same questions and prints a metric table.
+
+### 4. Reliability / evaluation harness
 - A **layered guardrail system** validates input (length, topic), and post-processes output (length cap, dosage-safety disclaimer) before showing the answer.
-- An **evaluation harness** (`eval_rag.py`) tests retrieval quality and guardrail behavior on predefined inputs and prints a pass/fail summary.
+- Two evaluation scripts — `eval_rag.py` (23 retrieval + guardrail tests) and `eval_specialization.py` (offline prompt diff + optional live baseline vs specialized comparison) — both print pass/fail summaries.
 
-The advisor materially changes system behavior: questions about a 10-year-old cat get senior-cat-specific answers because the prompt includes that pet's actual age, and questions about scheduling reference the actual conflicts the scheduler flagged.
+The advisor materially changes system behavior: questions about a 10-year-old cat get senior-cat-specific answers because the agent calls `get_pet_profiles` and passes that age into the synthesizer, and questions about scheduling reference the actual conflicts the scheduler flagged because the agent calls `get_conflicts`.
 
 ## System Architecture
 
@@ -36,10 +49,12 @@ The diagram (and the matching mermaid source in [assets/uml_final.md](assets/uml
 | Streamlit UI | [app.py](app.py) | Two-tab interface — **Schedule** tab and **AI Advisor** chat tab |
 | Core domain model | [pawpal_system.py](pawpal_system.py) | `Owner`, `Pet`, `Task`, `Scheduler` |
 | RAG engine | [rag_engine.py](rag_engine.py) | Markdown chunking, TF-IDF indexing, cosine-similarity retrieval |
-| AI advisor | [ai_advisor.py](ai_advisor.py) | Guardrails + retrieval + context-building + LLM call |
+| AI advisor | [ai_advisor.py](ai_advisor.py) | Guardrails + specialized prompt + retrieval + context-building + LLM call. Hosts both `ask()` (single-call) and `ask_with_agent()` (agentic) entry points. |
+| Agent | [agent.py](agent.py) | `PetCareAgent` — planner/tools/synthesizer/critic chain with observable trace |
 | Knowledge base | [knowledge_base/](knowledge_base/) | Six topic-organized markdown documents |
-| Evaluation harness | [eval_rag.py](eval_rag.py) | Standalone script — 23 retrieval/guardrail tests + optional end-to-end tests |
-| Test suite | [tests/](tests/) | 48 pytest tests across scheduler and RAG |
+| RAG eval | [eval_rag.py](eval_rag.py) | 23 retrieval/guardrail tests + optional end-to-end tests |
+| Specialization eval | [eval_specialization.py](eval_specialization.py) | Offline prompt diff + optional live baseline-vs-specialized comparison |
+| Test suite | [tests/](tests/) | 84 pytest tests — scheduler, RAG, advisor, and agent |
 
 ## Setup Instructions
 
@@ -74,9 +89,11 @@ Streamlit will open the app at `http://localhost:8501`.
 ### 4. Run the test suite
 
 ```bash
-python -m pytest                   # 48 unit/integration tests
-python eval_rag.py                 # 23 retrieval + guardrail tests, no API key needed
-python eval_rag.py --full          # adds end-to-end tests against the live API (needs HF_TOKEN)
+python -m pytest                       # 84 unit/integration tests
+python eval_rag.py                     # 23 retrieval + guardrail tests, no API key needed
+python eval_rag.py --full              # adds end-to-end tests against the live API (needs HF_TOKEN)
+python eval_specialization.py          # offline prompt-diff structural checks (6 checks)
+python eval_specialization.py --full   # live baseline-vs-specialized comparison (needs HF_TOKEN)
 ```
 
 ## Demo Walkthrough
@@ -135,7 +152,50 @@ The keyword-based topic filter catches this before any retrieval or API call hap
 
 The output regex detects the dose-shaped phrasing and appends the vet-consult disclaimer automatically.
 
+#### Example 4 — Agentic trace (observable intermediate steps)
+
+**Input:** `Is my exercise schedule enough for Mochi?`
+
+The UI expands to show every step the agent took:
+
+```
+plan        — Selected tools: ['retrieve_knowledge', 'get_pet_profiles', 'get_schedule']
+              Reasoning: The question references Mochi by name and asks about
+              the schedule, so I need pet details, the current plan, and
+              exercise guidelines.
+
+tool:retrieve_knowledge — 1182 chars returned
+              Retrieved 4 chunk(s) from ['exercise.md'].
+
+tool:get_pet_profiles   — 96 chars returned
+              Owner: Jordan (budget 60min/day)
+              - Mochi: dog, age 3, 1 task(s)
+
+tool:get_schedule       — 78 chars returned
+              Today's schedule:
+                08:00 — Morning walk (Mochi) [20min, high]
+
+synthesize  — draft: 412 chars
+
+critique    — verdict: OK
+              no issues
+```
+
+The answer itself references all three observations: Mochi by name, the 08:00 walk duration, and the retrieved exercise guidelines.
+
 ## Design Decisions
+
+### Why an agent instead of a single pipeline call
+
+The original pipeline (`AIAdvisor.ask`) always called every stage. An agent lets the model *decide* which tools to run based on the question — a pure-knowledge question skips the schedule tools, a "is my schedule okay?" question skips lookups and focuses on conflicts. The decision is observable (every step is in the trace) and testable (the planner's JSON output has a parser plus a heuristic fallback, so a malformed plan never crashes the chain). I kept the simple single-call path available (`ask()`) for comparison and as a fallback if the API budget is tight.
+
+### Why a heuristic critic (not an LLM critic)
+
+Using the LLM as a critic is a common pattern but it doubles the cost per question. For PawPal+, the failure modes I cared about most (empty answer, missing pet name, weak grounding) are *structural* — they can be checked with regex against the observations. The critic is intentionally additive: it doesn't replace the synthesizer's answer, it just flags when a revision is warranted and hands the draft + flagged issues to one more LLM call for rewriting. Two LLM calls on the worst path, one on the happy path.
+
+### Why few-shot examples in the system prompt
+
+A long rule list told the model *what* to do; it didn't show *how*. Adding three in-context examples (adult dog nutrition, senior cat health, off-topic redirect) pins the format concretely: named opening, 3–6 bullets, schedule tie-in, vet closer. The `eval_specialization.py` offline check confirms the prompt differences structurally, and the `--full` mode measures output differences (bullet count, pet-name references, vet disclaimers) against a baseline generic-prompt call.
 
 ### Why TF-IDF instead of a vector database
 
@@ -161,9 +221,9 @@ The advisor isn't a generic Q&A bot — it sees the actual `Owner`, `Pet`, and `
 
 ## Testing Summary
 
-### `pytest` — 48 tests passing
+### `pytest` — 84 tests passing
 
-Organized into 12 groups covering the original scheduler (Modules 1–3) and the new RAG layer:
+Organized into groups covering the original scheduler (Modules 1–3), the RAG layer, and the agentic workflow:
 
 | Group | What it covers |
 |---|---|
@@ -176,6 +236,30 @@ Organized into 12 groups covering the original scheduler (Modules 1–3) and the
 | `TestKnowledgeBaseLoading` / `TestChunking` | Load all docs, drop tiny chunks, preserve source metadata |
 | `TestRetrieval` | Top-k correctness, empty index, irrelevant-query handling |
 | `TestContextBuilding` / `TestAdvisorInit` | Context strings from live state, init with/without API key |
+| `TestToolRegistry` / `TestTools` | All four agent tools wired; knowledge, pet, schedule, conflict lookups work |
+| `TestPlanner` | LLM plan parsing (strict, with preamble, malformed), dedupe, fallback heuristic, rejection of unknown tools |
+| `TestCritic` | Grounded answers pass; short answers and missing-pet answers trigger REVISE |
+| `TestAgentRun` | End-to-end mocked run: trace + tools recorded; revision pass triggers when critic fails |
+| `TestAdvisorAskWithAgent` | Input/topic guardrails block before the agent runs; uninitialised advisor returns a friendly error |
+
+### `eval_specialization.py` — 6/6 structural checks passing
+
+```
+=== Offline Structural Comparison ===
+
+Baseline prompt length:    56 chars
+Specialized prompt length: 3098 chars
+Specialization ratio:      55.3x
+
+  [PASS] Specialized prompt has few-shot examples
+  [PASS] Specialized prompt has constrained style rules
+  [PASS] Specialized prompt mentions bullet format
+  [PASS] Specialized prompt requires vet disclaimer for medical questions
+  [PASS] Specialized prompt ties answers to schedule
+  [PASS] Baseline prompt has none of the above
+```
+
+In `--full` mode, the script calls both pipelines on the same three questions and prints a side-by-side metric table (length, bullet count, pet-name references, vet disclaimer present, schedule reference). Specialized wins are tracked per axis.
 
 ### `eval_rag.py` — 23/23 passing (no API key required)
 
@@ -255,8 +339,10 @@ applied-ai-system-project/
 ├── app.py                  # Streamlit UI (Schedule + AI Advisor tabs)
 ├── pawpal_system.py        # Owner / Pet / Task / Scheduler (Modules 1–3 core)
 ├── rag_engine.py           # TF-IDF retrieval over knowledge_base/
-├── ai_advisor.py           # Guardrails + RAG + LLM call
-├── eval_rag.py             # Evaluation harness (23 tests)
+├── ai_advisor.py           # Guardrails + specialized prompt + RAG + LLM call
+├── agent.py                # PetCareAgent — planner/tools/synthesizer/critic chain
+├── eval_rag.py             # RAG evaluation harness (23 tests)
+├── eval_specialization.py  # Baseline-vs-specialized comparison
 ├── main.py                 # CLI demo (no UI)
 ├── knowledge_base/         # Six topic-organized markdown documents
 ├── tests/                  # 48 pytest tests
