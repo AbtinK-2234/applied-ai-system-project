@@ -81,6 +81,8 @@ python eval_rag.py --full          # adds end-to-end tests against the live API 
 
 ## Demo Walkthrough
 
+**Loom video walkthrough:** _[paste Loom URL here once recorded]_ — a 5–7 minute walkthrough of PawPal+ running end-to-end, covering the Schedule tab, the AI Advisor tab, and the three sample interactions below.
+
 The screenshot below shows PawPal+ running end-to-end — the Schedule tab with pets and tasks loaded on the left, and the AI Advisor chat producing personalized advice on the right.
 
 ![PawPal+ Demo](assets/demo_screenshot.png)
@@ -241,6 +243,10 @@ Every layer (`rag_engine`, `ai_advisor`, `app`) uses Python's `logging` module. 
 ## Reflection
 
 A full reflection — covering how I used AI during development, one helpful and one flawed AI suggestion, biases in the data and the model, testing results, and future improvements — is in [model_card.md](model_card.md). The earlier Modules 1–3 design reflection is preserved in [reflection.md](reflection.md).
+
+### Portfolio Reflection — What This Project Says About Me as an AI Engineer
+
+PawPal+ shows the way I want to work as an AI engineer. I treat AI as a reviewer first and a generator second — the highest-leverage moments in this project came from asking the model to critique my existing code, not from asking it to write code from scratch. I take dependency cost seriously: I rejected the AI's first suggestion to use ChromaDB and sentence-transformers because TF-IDF was honest enough for the domain and let the project install in seconds. I build guardrails in layers I can test independently, I write evaluation harnesses (`eval_rag.py`) so reliability is measurable instead of assumed, and I keep the new AI feature wired into the live application state rather than bolted on as a side script. Most of all, I make the call on what to keep and what to reject — the model proposes, I decide.
 
 ## Repository Layout
 
