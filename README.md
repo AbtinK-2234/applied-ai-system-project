@@ -105,7 +105,7 @@ python eval_specialization.py --full   # live baseline-vs-specialized comparison
 
 ## Demo Walkthrough
 
-**Loom video walkthrough:** _[paste Loom URL here once recorded]_ — a 5–7 minute walkthrough of PawPal+ running end-to-end, covering the Schedule tab, the AI Advisor tab, and the three sample interactions below.
+**Loom video walkthrough:** [https://www.loom.com/share/d71f784922cf4f94b28d45de629d3899](https://www.loom.com/share/d71f784922cf4f94b28d45de629d3899) — a 5-minute walkthrough of PawPal+ running end-to-end, covering the Schedule tab, the AI Advisor tab, the agentic trace, and the guardrails.
 
 The screenshot below shows PawPal+ running end-to-end — the Schedule tab with pets and tasks loaded on the left, and the AI Advisor chat producing personalized advice on the right.
 
