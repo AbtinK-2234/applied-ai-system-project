@@ -402,5 +402,5 @@ class AIAdvisor:
             else:
                 logger.exception("Agent run failed")
                 return AgentResult(
-                    answer="An error occurred while running the agent. Please try again."
+                    answer=f"An error occurred while running the agent: {type(e).__name__}: {e}"
                 )
